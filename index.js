@@ -19,7 +19,6 @@ const { Select, prompt } = enquirer;
 const REPO_URL = "https://github.com/iampearceman/novu-next-quickstart.git";
 const REPO_NAME = path.basename(REPO_URL, '.git');
 const TUNNEL_URL = 'https://novu.sh/api/tunnels';
-let subscriberId = "";
 
 // Simple config implementation
 const config = {
@@ -53,10 +52,22 @@ const askNovuAccount = async () => {
     return prompt.run();
 };
 
-const openBrowserForAccount = async (answer) => {
+// Add a new function to ask for the user's region
+const askUserRegion = async () => {
+    const prompt = new Select({
+        name: 'region',
+        message: 'Are you from the EU or US?',
+        choices: ['EU', 'US'],
+    });
+    return prompt.run();
+};
+
+// Modify the openBrowserForAccount function
+const openBrowserForAccount = async (answer, region) => {
+    const baseUrl = region === 'EU' ? 'https://eu.dashboard.novu.co' : 'https://dashboard.novu.co';
     const url = answer === 'Yes'
-        ? 'https://dashboard.novu.co/api-keys?utm_source=cli&utm_medium=onboarding&utm_campaign=cli_onboarding'
-        : 'https://dashboard.novu.co/auth/signup?utm_source=cli&utm_medium=onboarding&utm_campaign=cli_onboarding';
+        ? `${baseUrl}/api-keys?utm_source=cli&utm_medium=onboarding&utm_campaign=cli_onboarding`
+        : `${baseUrl}/auth/signup?utm_source=cli&utm_medium=onboarding&utm_campaign=cli_onboarding`;
     console.log(chalk.cyan(`Opening Novu dashboard in your browser...`));
     await open(url);
 };
@@ -72,14 +83,16 @@ const askApiKey = async () => {
     return apiKey;
 };
 
-const validateApiKey = async (apiKey) => {
+// Modify the validateApiKey function
+const validateApiKey = async (apiKey, region) => {
     const spinner = ora('Validating API Key...').start();
+    const apiUrl = region === 'EU' ? 'https://eu.api.novu.co' : 'https://api.novu.co';
     const options = {
         method: 'GET',
         headers: { Authorization: `ApiKey ${apiKey}` },
     };
     try {
-        const response = await fetch('https://api.novu.co/v1/environments/me', options);
+        const response = await fetch(`${apiUrl}/v1/environments/me`, options);
         const data = await response.json();
         if (response.ok) {
             spinner.succeed(chalk.green('API Key is valid!'));
@@ -100,20 +113,21 @@ const validateApiKey = async (apiKey) => {
 const runNovuOnboarding = async () => {
     try {
         console.log(chalk.bold.blue('\n🚀 Starting Novu onboarding process...'));
+        const region = await askUserRegion();
         const accountAnswer = await askNovuAccount();
-        await openBrowserForAccount(accountAnswer);
+        await openBrowserForAccount(accountAnswer, region);
         let isValid = false;
         let result;
         while (!isValid) {
             const apiKey = await askApiKey();
-            result = await validateApiKey(apiKey);
+            result = await validateApiKey(apiKey, region);
             isValid = result.isValid;
             if (!isValid) {
                 console.log(chalk.red('Invalid API Key. Please try again.'));
             }
         }
         console.log(chalk.green.bold('✅ Novu configuration completed successfully!'));
-        return result;
+        return { ...result, region };
     } catch (error) {
         console.error(chalk.red('Error during Novu onboarding:'), error);
         return null;
@@ -453,12 +467,15 @@ async function main() {
         const endpointHealthy = await monitorEndpointHealth({ origin: 'http://localhost:3000' }, '/api/novu');
 
         if (endpointHealthy) {
-            const syncResult = await sync(`${tunnelOrigin}/api/novu`, novuConfig.apiKey, 'https://api.novu.co');
+            const apiUrl = novuConfig.region === 'EU' ? 'https://eu.api.novu.co' : 'https://api.novu.co';
+            const syncResult = await sync(`${tunnelOrigin}/api/novu`, novuConfig.apiKey, apiUrl);
             if (syncResult.success) {
                 console.log(chalk.green('Sync completed successfully!'));
                 // Trigger Novu notification after successful sync
                 try {
-                    const novu = new Novu(novuConfig.apiKey);
+                    const novu = new Novu(novuConfig.apiKey, {
+                        backendUrl: apiUrl
+                    });
                     const result = await novu.trigger('Inbox Demo', {
                         to: {
                             subscriberId: subscriberId,
