@@ -1,6 +1,6 @@
 {
     "name": "novu-next-cli",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "CLI app for Novu + Next.js Starter Kit",
     "main": "index.js",
     "type": "module",

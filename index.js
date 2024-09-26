@@ -13,12 +13,14 @@ import { NtfrTunnel } from '@novu/ntfr-client';
 import ws from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import { Novu } from '@novu/node';
+import net from 'net';
 
 const { Select, prompt } = enquirer;
 
 const REPO_URL = "https://github.com/iampearceman/novu-next-quickstart.git";
 const REPO_NAME = path.basename(REPO_URL, '.git');
 const TUNNEL_URL = 'https://novu.sh/api/tunnels';
+const DEFAULT_PORT = 4000;
 
 // Simple config implementation
 const config = {
@@ -42,6 +44,25 @@ function runCommand(command) {
         return false;
     }
 }
+
+// Add this function to find an available port
+function findAvailablePort(startPort) {
+    return new Promise((resolve, reject) => {
+        const server = net.createServer();
+        server.listen(startPort, () => {
+            const { port } = server.address();
+            server.close(() => resolve(port));
+        });
+        server.on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+                findAvailablePort(startPort + 1).then(resolve, reject);
+            } else {
+                reject(err);
+            }
+        });
+    });
+}
+
 
 const askNovuAccount = async () => {
     const prompt = new Select({
@@ -374,10 +395,10 @@ async function setupProject(novuConfig) {
     return subscriberId;
 }
 
-async function startDevServer() {
+async function startDevServer(port) {
     return new Promise((resolve, reject) => {
-        console.log(chalk.yellow('\nStarting the development server...'));
-        const child = spawn('npm', ['run', 'dev'], { stdio: 'pipe' });
+        console.log(chalk.yellow(`\nStarting the development server on port ${port}...`));
+        const child = spawn('npm', ['run', 'dev', '--', '-p', port.toString()], { stdio: 'pipe' });
 
         child.stdout.on('data', (data) => {
             const output = data.toString();
@@ -410,11 +431,12 @@ async function startDevServer() {
     });
 }
 
-async function waitForServerReady() {
-    console.log(chalk.gray('Waiting for the server to be ready...'));
+
+async function waitForServerReady(port) {
+    console.log(chalk.gray(`Waiting for the server to be ready on port ${port}...`));
     for (let i = 0; i < 30; i++) {
         try {
-            const response = await axios.get('http://localhost:3000');
+            const response = await axios.get(`http://localhost:${port}`);
             if (response.status === 200) {
                 console.log(chalk.green('Server is ready!'));
                 return true;
@@ -445,9 +467,13 @@ async function main() {
 
     const subscriberId = await setupProject(novuConfig);
 
+    // Find an available port starting from DEFAULT_PORT
+    const port = await findAvailablePort(DEFAULT_PORT);
+    console.log(chalk.cyan(`Using port: ${port}`));
+
     try {
-        await startDevServer();
-        const serverReady = await waitForServerReady();
+        await startDevServer(port);
+        const serverReady = await waitForServerReady(port);
         if (!serverReady) {
             console.error(chalk.red('Failed to confirm server is ready. Continuing with caution.'));
         }
@@ -457,14 +483,14 @@ async function main() {
     }
 
     // Create Tunnel
-    const tunnelOrigin = await createTunnel('http://localhost:3000', '/api/novu');
+    const tunnelOrigin = await createTunnel(`http://localhost:${port}`, '/api/novu');
     if (tunnelOrigin) {
         console.log(chalk.yellow('\nYou can also access your app via the public URL above.'));
         console.log(chalk.cyan('Tunnel URL:'), tunnelOrigin);
         console.log(chalk.cyan('Novu API Key (first 10 characters):'), novuConfig.apiKey.substring(0, 10) + '...');
 
         // Monitor endpoint health
-        const endpointHealthy = await monitorEndpointHealth({ origin: 'http://localhost:3000' }, '/api/novu');
+        const endpointHealthy = await monitorEndpointHealth({ origin: `http://localhost:${port}` }, '/api/novu');
 
         if (endpointHealthy) {
             const apiUrl = novuConfig.region === 'EU' ? 'https://eu.api.novu.co' : 'https://api.novu.co';
@@ -488,14 +514,13 @@ async function main() {
                     console.log(chalk.cyan('Status:'), result.status);
                     console.log(chalk.cyan('Data:'), JSON.stringify(result.data, null, 2));
 
-
                     if (result.status === 201) {
                         console.log(chalk.green('✅ Novu notification triggered successfully!'));
 
                         // Schedule the application reload after 5 seconds
                         console.log(chalk.cyan('\nScheduling application reload in 5 seconds...'));
                         setTimeout(async () => {
-                            await reloadApplication('http://localhost:3000');
+                            await reloadApplication(`http://localhost:${port}`);
                         }, 5000);
                     } else {
                         console.log(chalk.yellow('⚠️ Novu notification triggered, but with an unexpected status code.'));
