@@ -502,7 +502,7 @@ async function main() {
                     const novu = new Novu(novuConfig.apiKey, {
                         backendUrl: apiUrl
                     });
-                    const result = await novu.trigger('Inbox Demo', {
+                    const result = await novu.trigger('NextJsStarter', {
                         to: {
                             subscriberId: subscriberId,
                         },
