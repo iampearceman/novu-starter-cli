@@ -17,7 +17,7 @@ import net from 'net';
 
 const { Select, prompt } = enquirer;
 
-const REPO_URL = "https://github.com/iampearceman/novu-next-quickstart.git";
+const REPO_URL = "https://github.com/iampearceman/novu-nextjs-init.git";
 const REPO_NAME = path.basename(REPO_URL, '.git');
 const TUNNEL_URL = 'https://novu.sh/api/tunnels';
 const DEFAULT_PORT = 4000;
