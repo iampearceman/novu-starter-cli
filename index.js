@@ -379,7 +379,7 @@ async function setupProject(novuConfig) {
     const subscriberId = uuidv4();
     const envVariables = {
         NEXT_PUBLIC_NOVU_APPLICATION_IDENTIFIER: novuConfig.identifier,
-        NOVU_SECRET_KEY: novuConfig.apiKey,
+        NEXT_PUBLIC_NOVU_API_KEY: novuConfig.apiKey,
         NEXT_PUBLIC_NOVU_SUBSCRIBER_ID: subscriberId
     };
     await createEnvFile(envVariables, process.cwd());
